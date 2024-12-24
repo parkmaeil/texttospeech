@@ -24,15 +24,16 @@ import java.nio.charset.StandardCharsets;
 
 @RestController
 public class TTSController {
-
+   //                                      tts-1
     private final  OpenAiAudioSpeechModel openAiAudioSpeechModel;
 
     public TTSController(OpenAiAudioSpeechModel openAiAudioSpeechModel) {
         this.openAiAudioSpeechModel = openAiAudioSpeechModel;
     }
 
-    @PostMapping("/upload")
-    public ResponseEntity<StreamingResponseBody> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
+    @PostMapping("/upload")                                                                                                     //     tts.txt
+    public ResponseEntity<StreamingResponseBody> uploadFile(@RequestParam("file") MultipartFile file)
+                                                                                              throws IOException {
         // 업로드된 파일의 텍스트 내용 읽기
         String content = new String(file.getBytes(), StandardCharsets.UTF_8);
 
@@ -45,7 +46,7 @@ public class TTSController {
 
         SpeechPrompt speechPrompt = new SpeechPrompt(content, options);
 
-        // 리액티브 스트림 생성(실시간 오디오 스트리밍)
+        // 리액티브 스트림 생성(실시간 오디오 스트리밍) - LLM(text)--->Auido(mp3)
         Flux<SpeechResponse> responseStream = openAiAudioSpeechModel.stream(speechPrompt);
 
         // StreamingResponseBody로 변환하여 클라이언트로 스트림 반환
@@ -55,13 +56,13 @@ public class TTSController {
         return ResponseEntity
                 .ok()
                 .header(HttpHeaders.CONTENT_TYPE, "audio/mpeg") // MP3 파일로 설정
-                .body(stream);
+                .body(stream); // byte[]/ byte[], byte[]
     }
 
     private void writeToOutput(OutputStream outputStream, SpeechResponse speechResponse) {
         try {
             // 데이터를 출력 스트림에 작성
-            outputStream.write(speechResponse.getResult().getOutput());
+            outputStream.write(speechResponse.getResult().getOutput());  // byte[]
             outputStream.flush(); // 즉시 전송
         } catch (IOException e) {
             throw new RuntimeException("Error writing audio data to output stream", e);
