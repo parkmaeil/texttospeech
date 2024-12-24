@@ -19,28 +19,22 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 @RestController
 public class TTSController {
 
-    @Value("${spring.ai.openai.api-key}")
-     private String apiKey;
+    private final  OpenAiAudioSpeechModel openAiAudioSpeechModel;
 
-    SpeechModel speechModel;
-
-    public TTSController(SpeechModel speechModel){
-        this.speechModel=speechModel;
+    public TTSController(OpenAiAudioSpeechModel openAiAudioSpeechModel) {
+        this.openAiAudioSpeechModel = openAiAudioSpeechModel;
     }
 
     @PostMapping("/upload")
-    public ResponseEntity<StreamingResponseBody> uploadFile(@RequestParam("file") MultipartFile file) throws Exception {
+    public ResponseEntity<StreamingResponseBody> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
         // 업로드된 파일의 텍스트 내용 읽기
         String content = new String(file.getBytes(), StandardCharsets.UTF_8);
-
-        // OpenAI API 호출 준비
-        var openAIAudioApi = new OpenAiAudioApi(apiKey);
-        var openAIAudioSpeechModel = new OpenAiAudioSpeechModel(openAIAudioApi);
 
         OpenAiAudioSpeechOptions options = OpenAiAudioSpeechOptions.builder()
                 .withVoice(OpenAiAudioApi.SpeechRequest.Voice.ALLOY)
@@ -51,25 +45,26 @@ public class TTSController {
 
         SpeechPrompt speechPrompt = new SpeechPrompt(content, options);
 
-        // 리액티브 스트림을 블로킹 방식으로 변환
-        Flux<SpeechResponse> responseStream = openAIAudioSpeechModel.stream(speechPrompt);
+        // 리액티브 스트림 생성(실시간 오디오 스트리밍)
+        Flux<SpeechResponse> responseStream = openAiAudioSpeechModel.stream(speechPrompt);
 
-        StreamingResponseBody stream = outputStream -> {
-            responseStream
-                    .toStream()  // Flux를 blocking Stream으로 변환
-                    .forEach(speechResponse -> {
-                        try {
-                            outputStream.write(speechResponse.getResult().getOutput());
-                            outputStream.flush();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    });
-        };
+        // StreamingResponseBody로 변환하여 클라이언트로 스트림 반환
+        StreamingResponseBody stream = outputStream ->
+                responseStream.toStream().forEach(speechResponse -> writeToOutput(outputStream, speechResponse));
 
         return ResponseEntity
                 .ok()
-                .header(HttpHeaders.CONTENT_TYPE, "audio/mpeg") // MP3 응답 설정
+                .header(HttpHeaders.CONTENT_TYPE, "audio/mpeg") // MP3 파일로 설정
                 .body(stream);
+    }
+
+    private void writeToOutput(OutputStream outputStream, SpeechResponse speechResponse) {
+        try {
+            // 데이터를 출력 스트림에 작성
+            outputStream.write(speechResponse.getResult().getOutput());
+            outputStream.flush(); // 즉시 전송
+        } catch (IOException e) {
+            throw new RuntimeException("Error writing audio data to output stream", e);
+        }
     }
 }

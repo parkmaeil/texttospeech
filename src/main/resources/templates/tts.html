@@ -43,8 +43,8 @@
     const audioElement = document.getElementById('audioPlayer');
     const loadingMessage = document.getElementById('loadingMessage');
 
-    // 파일 업로드 및 서버에 요청하는 함수
-    uploadForm.addEventListener('submit', function (event) {
+    // 파일 업로드 및 서버 요청
+    uploadForm.addEventListener('submit', async function (event) {
         event.preventDefault();
 
         const file = fileInput.files[0];
@@ -53,57 +53,42 @@
             return;
         }
 
+        // FormData에 파일 추가
         const formData = new FormData();
         formData.append('file', file);
 
-        // 변환 중 메시지 표시
+        // 로딩 메시지 표시
         loadingMessage.style.display = 'block';
-        audioElement.style.display = 'none'; // 오디오 플레이어는 숨김
+        audioElement.style.display = 'none';
 
-        // 서버에 파일 업로드 및 MP3 스트리밍 요청
-        fetch('/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.body;
-        })
-        .then(body => {
-            const reader = body.getReader();
+        try {
+            // 서버에 요청
+            const response = await fetch('/upload', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error('네트워크 오류');
+
+            // 응답 스트림 처리
+            const reader = response.body.getReader();
             const chunks = [];
+            const contentType = response.headers.get('Content-Type');
 
-            return new ReadableStream({
-                start(controller) {
-                    function push() {
-                        reader.read().then(({ done, value }) => {
-                            if (done) {
-                                const blob = new Blob(chunks, { type: 'audio/mpeg' });
-                                const url = URL.createObjectURL(blob);
-                                audioElement.src = url;
+            while (true) {
+                const { done, value } = await reader.read(); // 4,8,16KB
+                if (done) break;
+                chunks.push(value);
+            }
 
-                                // 변환 완료 후 메시지 숨김 및 오디오 플레이어 표시
-                                loadingMessage.style.display = 'none';
-                                audioElement.style.display = 'block';
+            // Blob으로 변환
+            const blob = new Blob(chunks, { type: contentType || 'audio/mpeg' });
+            const url = URL.createObjectURL(blob);
 
-                                controller.close();
-                                return;
-                            }
-                            chunks.push(value);
-                            controller.enqueue(value);
-                            push();
-                        });
-                    }
-                    push();
-                }
-            });
-        })
-        .catch(error => {
+            // 오디오 설정 및 재생
+            audioElement.src = url;
+            loadingMessage.style.display = 'none';
+            audioElement.style.display = 'block';
+        } catch (error) {
             console.error('Error:', error);
             loadingMessage.textContent = '변환에 실패했습니다. 다시 시도해주세요.';
-        });
+        }
     });
 </script>
 </body>
